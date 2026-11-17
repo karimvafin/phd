@@ -181,4 +181,10 @@ Code:
 - `05_temp07.ipynb` — scorer trained at T=0.7;
 - `06_equal_tokens.ipynb` — comparison with best-of-K at exactly equal token count (CPU).
 
-Kaggle datasets: `cd-hh-rollouts`, `cd-hh-scorer`, `cd-hh-eval`, `cd-hh-feedback`, `cd-hh-scorer-t07`, `cd-hh-t07`.
+Kaggle datasets:
+- [`cd-hh-rollouts`](https://www.kaggle.com/datasets/karimvafin/cd-hh-rollouts) (`01`): T=1 π_ref responses with Skywork 0.6B rewards for 10,000 HH train prompts × 2 (`train.parquet`), the 500 held-out test prompts (`test_prompts.parquet`), and the generation config (`config.json`).
+- [`cd-hh-scorer`](https://www.kaggle.com/datasets/karimvafin/cd-hh-scorer) (`02`): the T=1 prefix scorer (Qwen2.5-0.5B + value head, fp16) with tokenizer, `scorer_config.json` (reward normalization, validation metrics), and the training log `metrics.jsonl`.
+- [`cd-hh-eval`](https://www.kaggle.com/datasets/karimvafin/cd-hh-eval) (`03`): per-prompt best-of-K (`bon_*.parquet`) and CD (`cd_M*_K*_*.parquet`) responses with rewards and token counts on the 500 test prompts, plus `run_meta.json`, `summary.csv`, `paired.csv` and `curves.png`.
+- [`cd-hh-feedback`](https://www.kaggle.com/datasets/karimvafin/cd-hh-feedback) (`04`): robustness checks: independent-judge scores (`judge_*.parquet`, `judges.csv`), wall-clock timing (`timing.csv`), length/finished stats (`lengths.csv`), and best-of-K and CD runs at T=0.7 with the T=1 scorer (`tbon_*`, `temperature.csv`).
+- [`cd-hh-scorer-t07`](https://www.kaggle.com/datasets/karimvafin/cd-hh-scorer-t07) (`05`): the prefix scorer retrained on T=0.7, top-p=0.9 responses, in the same format as `cd-hh-scorer`.
+- [`cd-hh-t07`](https://www.kaggle.com/datasets/karimvafin/cd-hh-t07) (`05`): T=0.7 train responses with rewards (`train_t07.parquet`), CD runs with the T=0.7 scorer, pair_acc tables, and `summary_t07.csv`.
