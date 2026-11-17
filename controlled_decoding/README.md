@@ -1,168 +1,184 @@
-# Воспроизведение Controlled Decoding (Mudgal et al., ICML 2024)
+# Reproducing Controlled Decoding (Mudgal et al., ICML 2024)
 
-Статья: [arXiv 2310.17022](https://arxiv.org/abs/2310.17022). Воспроизводится эксперимент 2: Anthropic HH, **блочный CD-FUDGE против best-of-K**.
+Paper: [arXiv 2310.17022](https://arxiv.org/abs/2310.17022). We reproduce Experiment 2: Anthropic HH, **blockwise CD-FUDGE vs best-of-K**.
 
-**Вопрос.** Может ли выбор по префиксам дать reward, как у best-of-K с большим K? Выбор идёт так: генерируем K блоков по M токенов, оставляем блок с лучшей оценкой prefix scorer'а и продолжаем.
+**Question.** Can selection over prefixes reach the reward of best-of-K with a large K? The selection works as follows: generate K blocks of M tokens, keep the block with the best prefix scorer score, and continue.
 
-## Сетап
+## Setup
 
-| | Статья | Здесь |
+| | Paper | Here |
 |---|---|---|
-| Базовая модель π_ref | PaLM 2-XXS | Qwen2.5-0.5B-Instruct, сэмплирование при T=1 без фильтрации, до 256 токенов |
+| Base model π_ref | PaLM 2-XXS | Qwen2.5-0.5B-Instruct, sampling at T=1 without filtering, up to 256 tokens |
 | Reward model | PaLM 2-XXS | Skywork-Reward-V2-Qwen3-0.6B |
-| Prefix scorer | CD-FUDGE | Qwen2.5-0.5B + линейная голова, CD-FUDGE: MSE каждого префикса к reward полного ответа |
-| Данные для scorer'а | HH | 10 000 промптов HH × 2 ответа π_ref |
-| Оценка | — | 500 отложенных test-промптов HH |
-| Железо | — | Kaggle, 2×T4 |
+| Prefix scorer | CD-FUDGE | Qwen2.5-0.5B + linear head, CD-FUDGE: MSE of every prefix to the reward of the full response |
+| Scorer training data | HH | 10,000 HH prompts × 2 π_ref responses |
+| Evaluation | — | 500 held-out HH test prompts |
+| Hardware | — | Kaggle, 2×T4 |
 
-## Как измеряем
+## Metrics
 
-- **Reward**: средний reward ответа по RM на test-промптах.
-- **Цена**: три способа.
-  - Число сгенерированных токенов, включая отброшенные кандидаты.
-  - Реальное время на промпт: генерация, scorer и RM, батч из 50 промптов.
-  - Верхняя оценка KL(π‖π_ref). Для best-of-K это log K − (K−1)/K, для CD то же, умноженное на число блоков.
-- **Эквивалентный K (K_eq)**: при каком K best-of-K даёт тот же reward, что CD.
-- **Значимость**: разница CD − best-of-K, 95% ДИ по парному бутстрепу по промптам (оба метода на одних и тех же промптах).
+- **Reward**: mean RM reward of the response on test prompts.
+- **Cost**: measured three ways.
+  - Number of generated tokens, including discarded candidates.
+  - Wall-clock time per prompt: generation, scorer and RM, batch of 50 prompts.
+  - Upper bound on KL(π‖π_ref). For best-of-K it is log K − (K−1)/K; for CD it is the same multiplied by the number of blocks.
+- **Equivalent K (K_eq)**: the K at which best-of-K reaches the same reward as CD.
+- **Significance**: difference CD − best-of-K, 95% CI from a paired bootstrap over prompts (both methods on the same prompts).
 
-## Основные результаты (T=1)
+## Main results (T=1)
 
-### Качество prefix scorer'а
+### Prefix scorer quality
 
-Pairwise accuracy: по первым t токенам двух ответов на один промпт угадать, какой из них получит больший reward по RM. Считается только на парах, где оба ответа длиннее t. Test: 6 800 пар на 500 отложенных промптах, погрешность ±0,012.
+Pairwise accuracy: given the first t tokens of two responses to the same prompt, predict which one gets the higher RM reward. Computed only on pairs where both responses are longer than t. Test: 6,800 pairs on 500 held-out prompts, error ±0.012.
 
-| t, токенов | 8 | 16 | 32 | 64 | 128 | весь ответ |
+| t, tokens | 8 | 16 | 32 | 64 | 128 | full response |
 |---|---|---|---|---|---|---|
-| Accuracy (test) | 0,61 | 0,65 | 0,69 | 0,75 | 0,79 | 0,84 |
+| Accuracy (test) | 0.61 | 0.65 | 0.69 | 0.75 | 0.79 | 0.84 |
 
-Уже по 16–32 токенам scorer заметно лучше случайного угадывания, а значит, может управлять выбором блока. Переобучения нет: на валидации 0,83 на полном ответе.
+*Accuracy*: share of test pairs (both responses longer than t) where the scorer's ranking of the two t-token prefixes matches the RM ranking of the full responses; chance is 0.5.
+
+Already at 16–32 tokens the scorer is clearly better than chance, so it can guide block selection. No overfitting: 0.83 on the full response on validation.
 
 ### Best-of-K
 
 | K | 1 | 2 | 4 | 8 | 16 | 32 |
 |---|---|---|---|---|---|---|
-| Reward | −4,43 | −3,09 | −2,01 | −1,12 | −0,37 | 0,29 |
-| KL (оценка) | 0 | 0,19 | 0,64 | 1,20 | 1,84 | 2,50 |
-| Время, с/промпт | — | 0,59 | 1,17 | 2,31 | 4,10 | 7,47 |
+| Reward | −4.43 | −3.09 | −2.01 | −1.12 | −0.37 | 0.29 |
+| KL (bound) | 0 | 0.19 | 0.64 | 1.20 | 1.84 | 2.50 |
+| Time, s/prompt | — | 0.59 | 1.17 | 2.31 | 4.10 | 7.47 |
 
-### Блочный CD
+*Reward*: mean Skywork 0.6B reward of the selected response over 500 test prompts. *KL (bound)*: log K − (K−1)/K. *Time*: wall-clock seconds per prompt for generation + RM, batch of 50 prompts.
 
-| M | K | Reward | Токенов | Время, с/промпт | KL (оценка) | K_eq [95% ДИ] | Δ к best-of-K при тех же токенах [95% ДИ] | Во сколько раз эффективнее по токенам |
+### Blockwise CD
+
+| M | K | Reward | Tokens | Time, s/prompt | KL (bound) | K_eq [95% CI] | Δ vs best-of-K at equal tokens [95% CI] | Token efficiency vs best-of-K |
 |---|---|---|---|---|---|---|---|---|
-| 16 | 2 | −2,33 | 263 | 0,93 | 1,66 | 3,3 [2,9; 3,7] | **+1,03** [0,84; 1,23] | 1,8 |
-| 16 | 4 | −0,98 | 505 | 1,62 | 5,37 | 9,1 [7,6; 11,0] | **+1,27** [1,06; 1,48] | 2,6 |
-| 16 | 8 | **−0,16** | 967 | 3,41 | 9,98 | **19,9** [16,2; 24,6] | **+1,19** [0,99; 1,40] | 3,0 |
-| 32 | 2 | −2,61 | 265 | 0,65 | 0,88 | 2,7 [2,4; 3,1] | **+0,73** [0,50; 0,95] | 1,5 |
-| 32 | 4 | −1,33 | 500 | 1,19 | 2,79 | 6,8 [5,9; 7,8] | **+0,93** [0,75; 1,11] | 2,0 |
-| 32 | 8 | −0,46 | 974 | 1,96 | 5,34 | 14,8 [12,5; 17,8] | **+0,89** [0,71; 1,08] | 2,2 |
-| 64 | 2 | −2,90 | 268 | 0,52 | 0,48 | 2,3 [2,0; 2,6] | **+0,41** [0,21; 0,61] | 1,25 |
-| 64 | 4 | −1,84 | 511 | 0,90 | 1,55 | 4,6 [4,0; 5,3] | **+0,38** [0,21; 0,56] | 1,3 |
-| 64 | 8 | −1,06 | 977 | 1,59 | 2,84 | 8,5 [7,4; 9,8] | **+0,29** [0,12; 0,45] | 1,3 |
+| 16 | 2 | −2.33 | 263 | 0.93 | 1.66 | 3.3 [2.9; 3.7] | **+1.03** [0.84; 1.23] | 1.8× |
+| 16 | 4 | −0.98 | 505 | 1.62 | 5.37 | 9.1 [7.6; 11.0] | **+1.27** [1.06; 1.48] | 2.6× |
+| 16 | 8 | **−0.16** | 967 | 3.41 | 9.98 | **19.9** [16.2; 24.6] | **+1.19** [0.99; 1.40] | 3.0× |
+| 32 | 2 | −2.61 | 265 | 0.65 | 0.88 | 2.7 [2.4; 3.1] | **+0.73** [0.50; 0.95] | 1.5× |
+| 32 | 4 | −1.33 | 500 | 1.19 | 2.79 | 6.8 [5.9; 7.8] | **+0.93** [0.75; 1.11] | 2.0× |
+| 32 | 8 | −0.46 | 974 | 1.96 | 5.34 | 14.8 [12.5; 17.8] | **+0.89** [0.71; 1.08] | 2.2× |
+| 64 | 2 | −2.90 | 268 | 0.52 | 0.48 | 2.3 [2.0; 2.6] | **+0.41** [0.21; 0.61] | 1.25× |
+| 64 | 4 | −1.84 | 511 | 0.90 | 1.55 | 4.6 [4.0; 5.3] | **+0.38** [0.21; 0.56] | 1.3× |
+| 64 | 8 | −1.06 | 977 | 1.59 | 2.84 | 8.5 [7.4; 9.8] | **+0.29** [0.12; 0.45] | 1.3× |
 
-Δ при тех же токенах: best-of-K считается для любого K от 1 до 32 и интерполируется до дробного K с тем же числом токенов, что у CD (`06_equal_tokens`). Последняя колонка — K_eq, делённый на этот K. Жирным выделены значимые разницы.
+*M*: block length in tokens; *K*: candidates per block. *Tokens*: mean generated tokens per prompt, including discarded candidates. *Time*: wall-clock seconds per prompt for generation + scorer + RM, batch of 50. *KL (bound)*: best-of-K bound log K − (K−1)/K times the number of blocks. *K_eq*: the K at which best-of-K reaches CD's mean reward (log-interpolated), CI from a paired bootstrap over prompts. *Δ at equal tokens*: CD reward minus best-of-K reward at the same token budget: best-of-K is computed for every K from 1 to 32 and interpolated to the fractional K with the same number of tokens as CD (`06_equal_tokens`). *Token efficiency*: K_eq divided by that equal-token K. Significant differences are in bold.
 
-**При равной оценке KL best-of-K лучше во всех 9 конфигурациях:** Δ от −0,45 до −1,96, все ДИ ниже нуля.
+**At equal KL bound, best-of-K is better in all 9 configurations:** Δ from −0.45 to −1.96, all CIs below zero.
 
-## Проверки устойчивости
+## Robustness checks
 
-### Независимые судьи
+### Independent judges
 
-Ответы всех методов переоценены двумя другими RM. Best-of-K по-прежнему выбирает ответ по Skywork 0.6B, а судья оценивает выбранный ответ.
+The responses of all methods are re-scored by two other RMs. Best-of-K still selects the response with Skywork 0.6B, and the judge scores the selected response.
 
-| | Skywork 0.6B (цель) | Skywork-V2 4B | GRM-Llama3.2-3B |
+| | Skywork 0.6B (target) | Skywork-V2 4B | GRM-Llama3.2-3B |
 |---|---|---|---|
-| Ранговая корреляция с целью | 1 | 0,78 | 0,48 |
-| Win rate против π_ref: best-of-4 / best-of-32 | 0,82 / 0,97 | 0,75 / 0,88 | 0,65 / 0,74 |
-| K_eq: CD M=16, K=4 | 9,1 | 22 | 10,6 [6,4; 21] |
-| K_eq: CD M=16, K=8 | 19,9 | ≥32 | 19,1 [9,8; 32] |
-| Значимый выигрыш при равных токенах (сравнение с ближайшим best-of-K, у которого токенов не меньше) | 7 из 9 | 9 из 9 | 6 из 9 |
+| Rank correlation with target | 1 | 0.78 | 0.48 |
+| Win rate vs π_ref: best-of-4 / best-of-32 | 0.82 / 0.97 | 0.75 / 0.88 | 0.65 / 0.74 |
+| K_eq: CD M=16, K=4 | 9.1 | 22 | 10.6 [6.4; 21] |
+| K_eq: CD M=16, K=8 | 19.9 | ≥32 | 19.1 [9.8; 32] |
+| Significant gain at equal tokens (vs the nearest best-of-K with at least as many tokens) | 7 of 9 | 9 of 9 | 6 of 9 |
 
-Абсолютный выигрыш у обоих методов у другого судьи меньше: часть его — подгонка под Skywork 0.6B. **Относительное преимущество CD сохраняется**: у GRM K_eq почти тот же, что у цели. Оговорка: GRM тоже обучен на данных Skywork, поэтому полностью независимым судьёй его не назвать.
+*Rank correlation*: Spearman correlation between the judge's and the target RM's rewards on all π_ref samples. *Win rate vs π_ref*: share of comparisons in which the selected response gets a higher judge score than each of 4 held-out π_ref samples for the same prompt (tie = 0.5, π_ref itself = 0.5), averaged over prompts. *K_eq*: as above, but with rewards from this judge. *Significant gain*: number of CD configurations whose 95% CI of Δ vs best-of-K lies above zero.
 
-### Реальная стоимость
+Under another judge the absolute gain of both methods is smaller: part of it is overfitting to Skywork 0.6B. **CD's relative advantage holds**: under GRM, K_eq is almost the same as under the target. Caveat: GRM is also trained on Skywork data, so it cannot be called a fully independent judge.
 
-Сравниваем CD с best-of-K такого же качества (K = K_eq, время best-of-K интерполировано).
+### Real cost
 
-| CD | Время CD, с/промпт | Такое же качество у best-of-K | Время best-of-K, с/промпт | CD быстрее |
+We compare CD with best-of-K of the same quality (K = K_eq, best-of-K time interpolated).
+
+| CD | CD time, s/prompt | Same quality with best-of-K | Best-of-K time, s/prompt | CD speedup |
 |---|---|---|---|---|
-| M=16, K=4 | 1,62 | best-of-9 | ~2,6 | 1,6× |
-| M=32, K=4 | 1,19 | best-of-7 | ~2,0 | 1,7× |
-| M=16, K=8 | 3,41 | best-of-20 | ~4,9 | 1,4× |
-| M=32, K=8 | 1,96 | best-of-15 | ~3,8 | 1,9× |
+| M=16, K=4 | 1.62 | best-of-9 | ~2.6 | 1.6× |
+| M=32, K=4 | 1.19 | best-of-7 | ~2.0 | 1.7× |
+| M=16, K=8 | 3.41 | best-of-20 | ~4.9 | 1.4× |
+| M=32, K=8 | 1.96 | best-of-15 | ~3.8 | 1.9× |
 
-С учётом вызовов scorer'а CD при равном качестве в 1,4–1,9 раза дешевле, а не в 2–2,5 раза, как выходит по токенам. Scorer занимает 16–30% времени CD. При M=16 добавляются накладные расходы на мелкие вызовы генерации, и scorer без KV-кэша заново читает весь префикс. Измерена пропускная способность в батче, а не задержка одного запроса.
+*CD time / best-of-K time*: wall-clock seconds per prompt (generation + scorer + RM), batch of 50 prompts; best-of-K time interpolated to K = K_eq. *Same quality with best-of-K*: best-of-K_eq, rounded. *CD speedup*: best-of-K time divided by CD time.
 
-### Длина ответа и обрезанные ответы
+Including scorer calls, CD at equal quality is 1.4–1.9× cheaper, not 2–2.5× as the token count suggests. The scorer takes 16–30% of CD time. At M=16 there is extra overhead from many small generation calls, and the scorer, lacking a KV cache, re-reads the whole prefix. We measure batched throughput, not single-request latency.
 
-| | Длина, токенов | Законченных | Reward на законченных |
+### Response length and truncated responses
+
+| | Length, tokens | Finished | Reward on finished |
 |---|---|---|---|
-| π_ref | 146 | 72% | −3,94 |
-| best-of-4 / best-of-8 | 137 | 80% / 82% | −1,79 / −0,96 |
-| CD M=16, K=4 / K=8 | 128 / 126 | 85% / 88% | −1,02 / −0,09 |
+| π_ref | 146 | 72% | −3.94 |
+| best-of-4 / best-of-8 | 137 | 80% / 82% | −1.79 / −0.96 |
+| CD M=16, K=4 / K=8 | 128 / 126 | 85% / 88% | −1.02 / −0.09 |
 
-RM штрафует ответы, обрезанные по лимиту в 256 токенов, а CD даёт их реже. **Но выигрыш CD объясняется не только этим**: на одних законченных ответах Δ к best-of-K остаётся +0,77 и +0,87 для K=4 и K=8 (сравнение с ближайшим best-of-K, у которого токенов не меньше; оно занижает CD).
+*Length*: mean response length in tokens. *Finished*: share of responses that end with EOS before the 256-token limit. *Reward on finished*: mean reward over finished responses only.
 
-### Температура T=0.7, top-p=0.9
+The RM penalizes responses truncated at the 256-token limit, and CD produces them less often. **But this does not fully explain CD's gain**: on finished responses only, Δ vs best-of-K stays +0.77 and +0.87 for K=4 and K=8 (vs the nearest best-of-K with at least as many tokens, which understates CD).
 
-Scorer тот же, обучен на ответах при T=1.
+### Temperature T=0.7, top-p=0.9
+
+Same scorer, trained on responses at T=1.
 
 | | T=1 | T=0.7 |
 |---|---|---|
-| π_ref | −4,43 | −2,31 |
-| best-of-4 / best-of-8 | −2,01 / −1,12 | −0,48 / 0,18 |
-| CD M=16, K=4: reward / K_eq / Δ при тех же токенах | −0,98 / 9,1 / **+1,27** | −0,77 / 3,1 / −0,16 |
-| CD M=16, K=8: reward / K_eq / Δ при тех же токенах | −0,16 / 19,9 / **+1,19** | −0,20 / 5,3 / **−0,27** |
+| π_ref | −4.43 | −2.31 |
+| best-of-4 / best-of-8 | −2.01 / −1.12 | −0.48 / 0.18 |
+| CD M=16, K=4: reward / K_eq / Δ at equal tokens | −0.98 / 9.1 / **+1.27** | −0.77 / 3.1 / −0.16 |
+| CD M=16, K=8: reward / K_eq / Δ at equal tokens | −0.16 / 19.9 / **+1.19** | −0.20 / 5.3 / **−0.27** |
 
-**Со scorer'ом, обученным при T=1, CD при T=0.7 хуже best-of-K во всех трёх конфигурациях**: при тех же токенах Δ от −0,16 до −0,28, эффективность 0,75–0,86 от best-of-K. Best-of-K от снижения температуры выигрывает 1–1,5 по reward, а CD почти ничего.
+*Reward, K_eq, Δ at equal tokens*: as in the blockwise CD table, with best-of-K computed at the same temperature. Significant Δ in bold.
 
-### Scorer, обученный при T=0.7
+**With the scorer trained at T=1, CD at T=0.7 is worse than best-of-K in all three configurations**: at equal tokens Δ from −0.16 to −0.28, efficiency 0.75–0.86× of best-of-K. Best-of-K gains 1–1.5 reward from the lower temperature, while CD gains almost nothing.
 
-Scorer обучен тем же рецептом на 10 000 промптов × 2 ответа при T=0.7, top-p=0.9 (`05_temp07`).
+### Scorer trained at T=0.7
 
-Строгая pair_acc на test:
+The scorer is trained with the same recipe on 10,000 prompts × 2 responses at T=0.7, top-p=0.9 (`05_temp07`).
 
-| Scorer → ответы | t=8 | t=32 | t=64 | весь ответ |
+Strict pair_acc on test:
+
+| Scorer → responses | t=8 | t=32 | t=64 | full response |
 |---|---|---|---|---|
-| T=1 → T=1 | 0,61 | 0,69 | 0,75 | 0,84 |
-| T=1 → T=0.7 | 0,58 | 0,61 | 0,63 | 0,77 |
-| T=0.7 → T=0.7 | 0,60 | 0,64 | 0,67 | 0,80 |
+| T=1 → T=1 | 0.61 | 0.69 | 0.75 | 0.84 |
+| T=1 → T=0.7 | 0.58 | 0.61 | 0.63 | 0.77 |
+| T=0.7 → T=0.7 | 0.60 | 0.64 | 0.67 | 0.80 |
 
-CD при T=0.7:
+*Scorer → responses*: temperature of the scorer's training data → temperature of the test responses. *Strict pair_acc*: pairwise accuracy as above, only on pairs where both responses are longer than t.
 
-| CD | Reward: scorer T=1 → T=0.7 | Δ новый − старый [95% ДИ] | Δ к best-of-K при тех же токенах: scorer T=1 → T=0.7 | Во сколько раз эффективнее по токенам: scorer T=1 → T=0.7 |
+CD at T=0.7:
+
+| CD | Reward: scorer T=1 → T=0.7 | Δ new − old [95% CI] | Δ vs best-of-K at equal tokens: scorer T=1 → T=0.7 | Token efficiency vs best-of-K: scorer T=1 → T=0.7 |
 |---|---|---|---|---|
-| M=16, K=4 | −0,77 → −0,27 | +0,50 [0,34; 0,68] | **−0,16** → +0,13 [−0,03; 0,28] | 0,86 → 1,13 |
-| M=32, K=4 | −0,88 → −0,46 | +0,42 [0,27; 0,57] | **−0,28** → −0,05 [−0,20; 0,10] | 0,78 → 0,95 |
-| M=16, K=8 | −0,20 → +0,45 | +0,65 [0,46; 0,83] | **−0,27** → **+0,18** [0,02; 0,35] | 0,75 → 1,24 |
+| M=16, K=4 | −0.77 → −0.27 | +0.50 [0.34; 0.68] | **−0.16** → +0.13 [−0.03; 0.28] | 0.86 → 1.13 |
+| M=32, K=4 | −0.88 → −0.46 | +0.42 [0.27; 0.57] | **−0.28** → −0.05 [−0.20; 0.10] | 0.78 → 0.95 |
+| M=16, K=8 | −0.20 → +0.45 | +0.65 [0.46; 0.83] | **−0.27** → **+0.18** [0.02; 0.35] | 0.75 → 1.24 |
 
-- **Сдвиг распределения был.** Новый scorer точнее на ответах при T=0.7, и CD с ним значимо лучше.
-- **Но при T=0.7 выбирать почти не из чего.** Разброс reward между двумя ответами на один промпт меньше на 25% (1,46 против 1,96). Даже свой scorer различает такие ответы хуже, чем scorer при T=1 свои (0,64 против 0,69 при t=32).
-- **Итог: при тех же токенах CD с новым scorer'ом на уровне best-of-K** (0,95–1,24 раза; значимо только M=16, K=8: +0,18), против 1,5–3 раз при T=1. С учётом времени на scorer выигрыша, скорее всего, нет.
-- Новый scorer выбирает более длинные ответы: 149 токенов против 122, законченных 73% против 82%.
+*Reward: scorer T=1 → T=0.7*: CD reward at T=0.7 with the old (T=1) scorer → with the new (T=0.7) scorer. *Δ new − old*: their difference, paired bootstrap CI. *Δ vs best-of-K* and *token efficiency*: as in the blockwise CD table, CI for the new scorer. Significant values in bold.
 
-## Выводы
+- **There was a distribution shift.** The new scorer is more accurate on T=0.7 responses, and CD with it is significantly better.
+- **But at T=0.7 there is little to choose from.** The reward spread between two responses to the same prompt is 25% smaller (1.46 vs 1.96). Even a matched scorer separates such responses worse than the T=1 scorer separates its own (0.64 vs 0.69 at t=32).
+- **Bottom line: at equal tokens, CD with the new scorer is on par with best-of-K** (0.95–1.24×; only M=16, K=8 is significant: +0.18), vs 1.5–3× at T=1. Accounting for scorer time, there is most likely no gain.
+- The new scorer picks longer responses: 149 tokens vs 122, 73% finished vs 82%.
 
-1. **Главный эффект воспроизводится при T=1.** CD с K кандидатами на блок даёт reward best-of-K с K в 2–2,5 раза больше. Пример: M=16, K=8 ≈ best-of-20.
-2. **При одинаковом бюджете токенов CD лучше best-of-K во всех 9 конфигурациях**: в 1,25–3 раза эффективнее, Δ от +0,29 до +1,27.
-3. **Эффект устойчив.** Он сохраняется у независимого судьи, на одних законченных ответах и при учёте реального времени, хотя по времени выигрыш меньше: в 1,4–1,9 раза. Лучшее соотношение цены и качества у M=32.
-4. **M работает как ручка компромисса.** Чем меньше блок, тем выше reward и тем сильнее отклонение от π_ref. При M=64 (всего 4 блока на ответ) выигрыш небольшой: в 1,3 раза.
-5. **При T=0.7 эффект почти пропадает.** Scorer нужно обучать при той же температуре, на которой работает CD: это даёт +0,4–0,65 reward. Но и тогда CD по токенам лишь на уровне best-of-K. Основная причина в том, что при низкой температуре ответы на один промпт меньше различаются по качеству, и выбор по префиксам даёт мало. Похоже, большая часть выигрыша CD при T=1 связана с высоким разнообразием сэмплов.
-6. **По KL best-of-K выглядит лучше, но сравнение нечестное.** Для CD это верхняя оценка, и, скорее всего, сильно завышенная: соседние кандидаты имеют общий префикс.
+## Conclusions
 
-## Ограничения
+1. **The main effect reproduces at T=1.** CD with K candidates per block reaches the reward of best-of-K with a 2–2.5× larger K. Example: M=16, K=8 ≈ best-of-20.
+2. **At an equal token budget, CD beats best-of-K in all 9 configurations**: 1.25–3× more efficient, Δ from +0.29 to +1.27.
+3. **The effect is robust.** It holds under an independent judge, on finished responses only, and in wall-clock time, although the time gain is smaller: 1.4–1.9×. M=32 gives the best cost/quality trade-off.
+4. **M acts as a trade-off knob.** Smaller blocks give higher reward and a stronger deviation from π_ref. At M=64 (only 4 blocks per response) the gain is small: 1.3×.
+5. **At T=0.7 the effect nearly vanishes.** The scorer must be trained at the same temperature CD runs at: this adds +0.4–0.65 reward. Even then CD is only on par with best-of-K in tokens. The main reason is that at low temperature responses to the same prompt differ less in quality, so prefix selection gains little. Most of CD's gain at T=1 appears to come from high sample diversity.
+6. **Best-of-K looks better in KL, but the comparison is unfair.** For CD this is an upper bound, and most likely a loose one: sibling candidates share a common prefix.
 
-- **Нет LLM-судьи.** Обе дополнительные RM — модели того же типа, что и цель. В статье для оценки использовалась отдельная, более сильная модель.
-- **Время** измерено на 50 промптах в батче на T4. Задержка одного запроса у CD выше, чем у best-of-K: блоки генерируются последовательно.
-- **Другие модели.** Вместо PaLM 2 взяты открытые модели на 0,5–0,6B параметров, поэтому абсолютные значения reward со статьёй не сравнить. Сравнивать можно только порядок методов.
+## Limitations
+
+- **No LLM judge.** Both extra RMs are models of the same kind as the target. The paper used a separate, stronger model for evaluation.
+- **Time** is measured on a batch of 50 prompts on a T4. Single-request latency of CD is higher than best-of-K, because blocks are generated sequentially.
+- **Different models.** Instead of PaLM 2 we use open 0.5–0.6B models, so absolute reward values are not comparable with the paper. Only the ordering of methods is comparable.
 
 ---
 
-Код:
-- `01_rollouts.ipynb` — ответы π_ref и их reward;
-- `02_train_scorer.ipynb` — обучение prefix scorer'а;
-- `03_eval.ipynb` — сравнение best-of-K и CD;
-- `04_feedback.ipynb` — проверки устойчивости;
-- `05_temp07.ipynb` — scorer, обученный при T=0.7;
-- `06_equal_tokens.ipynb` — сравнение с best-of-K при точно равном числе токенов (CPU).
+Code:
+- `01_rollouts.ipynb` — π_ref responses and their rewards;
+- `02_train_scorer.ipynb` — prefix scorer training;
+- `03_eval.ipynb` — best-of-K vs CD comparison;
+- `04_feedback.ipynb` — robustness checks;
+- `05_temp07.ipynb` — scorer trained at T=0.7;
+- `06_equal_tokens.ipynb` — comparison with best-of-K at exactly equal token count (CPU).
 
-Данные на Kaggle: `cd-hh-rollouts`, `cd-hh-scorer`, `cd-hh-eval`, `cd-hh-feedback`, `cd-hh-scorer-t07`, `cd-hh-t07`.
+Kaggle datasets: `cd-hh-rollouts`, `cd-hh-scorer`, `cd-hh-eval`, `cd-hh-feedback`, `cd-hh-scorer-t07`, `cd-hh-t07`.
