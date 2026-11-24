@@ -156,6 +156,31 @@ CD at T=0.7:
 - **Bottom line: at equal tokens, CD with the new scorer is on par with best-of-K** (0.95–1.24×; only M=16, K=8 is significant: +0.18), vs 1.5–3× at T=1. Accounting for scorer time, there is most likely no gain.
 - The new scorer picks longer responses: 149 tokens vs 122, 73% finished vs 82%.
 
+## Zero-shot transfer from HH to GSM8K
+
+We evaluated the frozen HH-trained CD-FUDGE scorer on all 1,319 questions in the official GSM8K test split. All methods used Qwen2.5-0.5B-Instruct with the same zero-shot prompt, T=1 sampling without filtering, and a 512-token output cap. Blockwise CD used M=32 tokens and K=4 candidates per block. The random-block baseline generated the same number of candidates per block and kept the first sampled candidate without scoring. Unguided sampling generated one complete response per question.
+
+| Method | Strict exact match | Exact match with boxed fallback | Generated tokens per question | Seconds per question |
+|---|---:|---:|---:|---:|
+| Unguided sampling | 3.71% (49/1,319) | 25.25% (333/1,319) | 302 | 1.13 |
+| Random block selection | 3.34% (44/1,319) | 24.72% (326/1,319) | 1,195 | 2.00 |
+| Blockwise CD with HH scorer | 2.96% (39/1,319) | 28.89% (381/1,319) | 1,058 | 2.28 |
+
+Generated tokens include discarded candidates. Times are batched wall-clock seconds per question. Accuracy uses all questions as the denominator and counts unparseable outputs as incorrect.
+
+| CD minus baseline | Strict difference, pp [95% CI] | Boxed fallback difference, pp [95% CI] |
+|---|---:|---:|
+| Unguided sampling | −0.76 [−2.12, +0.61] | +3.64 [+0.68, +6.60] |
+| Random block selection | −0.38 [−1.67, +0.91] | +4.17 [+1.52, +6.82] |
+
+Intervals come from 10,000 paired bootstrap resamples over questions. The original parser required a standalone `#### <number>` line and extracted an answer from 11.3% of unguided, 12.4% of random-block, and 8.3% of CD outputs. The strict result against unguided sampling leaves a loss greater than the 2-percentage-point margin possible.
+
+The post hoc analysis kept every answer extracted by the strict parser and otherwise used the last LaTeX `\boxed{...}` containing a plain signed or unsigned number, allowing decimals and thousands separators. This raised extraction rates to 58.8%, 61.3%, and 62.4%, respectively. Under that rule, CD improved accuracy over both baselines and used about 3.5× the generated tokens and 2.0× the wall-clock time of unguided sampling. The ranking of methods changes with the extraction rule, and 38–41% of outputs still have no extracted answer, so the evidence for improved math accuracy is preliminary.
+
+The remaining compute-efficiency comparison is CD versus best-of-2, 4, and 8, with complete responses ranked by the same frozen HH scorer. Use a common answer extractor validated on a blinded sample of responses, and compare accuracy against actual generated tokens and wall-clock time.
+
+[Notebook](07_gsm8k_transfer.ipynb) · [Full predictions](07_gsm8k_transfer_results/gsm8k_hh_transfer_full_predictions.csv) · [Original summary](07_gsm8k_transfer_results/gsm8k_hh_transfer_full_summary.csv) · [Original paired results](07_gsm8k_transfer_results/gsm8k_hh_transfer_full_paired.csv)
+
 ## Conclusions
 
 1. **The main effect reproduces at T=1.** CD with K candidates per block reaches the reward of best-of-K with a 2–2.5× larger K. Example: M=16, K=8 ≈ best-of-20.
